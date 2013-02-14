@@ -1015,7 +1015,6 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 	size_t len;
 	bool do_datacrc = !con->msgr->nocrc;
 	int ret;
-	int total_max_write;
 	bool in_trail = false;
 	size_t trail_len;
 	size_t trail_off;
@@ -1038,14 +1037,13 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 		struct page *page = NULL;
 		int max_write = PAGE_SIZE;
 		int bio_offset = 0;
+		int resid;
 
 		in_trail = in_trail || con->out_msg_pos.data_pos >= trail_off;
 		if (!in_trail)
-			total_max_write = trail_off - con->out_msg_pos.data_pos;
-
+			resid = trail_off - con->out_msg_pos.data_pos;
 		if (in_trail) {
-			total_max_write = data_len - con->out_msg_pos.data_pos;
-
+			resid = data_len - con->out_msg_pos.data_pos;
 			page = list_first_entry(&msg->data_out.trail->head,
 						struct page, lru);
 		} else if (msg->data_out.pages) {
@@ -1066,8 +1064,7 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 		} else {
 			page = zero_page;
 		}
-		len = min_t(int, max_write - con->out_msg_pos.page_pos,
-			    total_max_write);
+		len = min_t(int, max_write - con->out_msg_pos.page_pos, resid);
 
 		if (do_datacrc && !con->out_msg_pos.did_page_crc) {
 			void *base;
