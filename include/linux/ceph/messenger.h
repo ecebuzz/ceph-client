@@ -64,7 +64,13 @@ struct ceph_messenger {
 	u32 required_features;
 };
 
+enum msg_data_type {
+	MSG_DATA_NONE,			/* Not yet defined */
+	MSG_DATA_PAGELIST,		/* concatenatable list of pages */
+};
+
 struct ceph_msg_data {
+	enum msg_data_type type;
 	struct ceph_pagelist *pagelist;
 };
 

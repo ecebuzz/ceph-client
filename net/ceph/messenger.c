@@ -988,14 +988,17 @@ EXPORT_SYMBOL(ceph_msg_pagelist_set);
 
 static void ceph_msg_trail_init(struct ceph_msg *msg)
 {
+	msg->trail.type = MSG_DATA_NONE;
 	msg->trail.pagelist = NULL;
 }
 
 void ceph_msg_trail_set_pagelist(struct ceph_msg *msg,
 				struct ceph_pagelist *pagelist)
 {
+	WARN_ON(msg->trail.type != MSG_DATA_NONE);
 	WARN_ON(msg->trail.pagelist != NULL);
 
+	msg->trail.type = MSG_DATA_PAGELIST;
 	msg->trail.pagelist = pagelist;
 }
 EXPORT_SYMBOL(ceph_msg_trail_set_pagelist);
@@ -1017,15 +1020,17 @@ static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 	con->out_msg_pos.page_pos = 0;
 	con->out_msg_pos.page++;
 	con->out_msg_pos.did_page_crc = false;
-	if (in_trail)
+	if (in_trail) {
+		BUG_ON(msg->trail.type != MSG_DATA_PAGELIST);
 		list_move_tail(&page->lru, &msg->trail.pagelist->head);
-	else if (msg->pagelist)
+	} else if (msg->pagelist) {
 		list_move_tail(&page->lru,
 			       &msg->pagelist->head);
 #ifdef CONFIG_BLOCK
-	else if (msg->bio)
+	} else if (msg->bio) {
 		iter_bio_next(&msg->bio_iter, &msg->bio_seg);
 #endif
+	}
 }
 
 /*
@@ -1042,11 +1047,11 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 	bool do_datacrc = !con->msgr->nocrc;
 	int ret;
 	bool in_trail = false;
-	size_t trail_len;
-	size_t trail_off;
+	size_t trail_off = data_len;
 
-	trail_len = msg->trail.pagelist ? msg->trail.pagelist->length : 0;
-	trail_off = data_len - trail_len;
+	if (msg->trail.type == MSG_DATA_PAGELIST)
+		trail_off -= msg->trail.pagelist->length;
+
 	dout("write_partial_msg_pages %p msg %p page %d/%d offset %d\n",
 	     con, msg, con->out_msg_pos.page, msg->nr_pages,
 	     con->out_msg_pos.page_pos);
@@ -1071,7 +1076,8 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 		in_trail = in_trail || con->out_msg_pos.data_pos >= trail_off;
 		resid = trail_off - con->out_msg_pos.data_pos;
 		if (in_trail) {
-			resid += trail_len;
+			BUG_ON(msg->trail.type != MSG_DATA_PAGELIST);
+			resid += data_len - trail_off;
 			page = list_first_entry(&msg->trail.pagelist->head,
 						struct page, lru);
 		} else if (msg->pages) {
