@@ -988,15 +988,15 @@ EXPORT_SYMBOL(ceph_msg_pagelist_set);
 
 static void ceph_msg_trail_init(struct ceph_msg *msg)
 {
-	msg->trail = NULL;
+	msg->trail.pagelist = NULL;
 }
 
 void ceph_msg_trail_set_pagelist(struct ceph_msg *msg,
 				struct ceph_pagelist *pagelist)
 {
-	WARN_ON(msg->trail != NULL);
+	WARN_ON(msg->trail.pagelist != NULL);
 
-	msg->trail = pagelist;
+	msg->trail.pagelist = pagelist;
 }
 EXPORT_SYMBOL(ceph_msg_trail_set_pagelist);
 
@@ -1018,8 +1018,7 @@ static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 	con->out_msg_pos.page++;
 	con->out_msg_pos.did_page_crc = false;
 	if (in_trail)
-		list_move_tail(&page->lru,
-			       &msg->trail->head);
+		list_move_tail(&page->lru, &msg->trail.pagelist->head);
 	else if (msg->pagelist)
 		list_move_tail(&page->lru,
 			       &msg->pagelist->head);
@@ -1043,9 +1042,11 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 	bool do_datacrc = !con->msgr->nocrc;
 	int ret;
 	bool in_trail = false;
-	const size_t trail_len = (msg->trail ? msg->trail->length : 0);
-	const size_t trail_off = data_len - trail_len;
+	size_t trail_len;
+	size_t trail_off;
 
+	trail_len = msg->trail.pagelist ? msg->trail.pagelist->length : 0;
+	trail_off = data_len - trail_len;
 	dout("write_partial_msg_pages %p msg %p page %d/%d offset %d\n",
 	     con, msg, con->out_msg_pos.page, msg->nr_pages,
 	     con->out_msg_pos.page_pos);
@@ -1071,7 +1072,7 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 		resid = trail_off - con->out_msg_pos.data_pos;
 		if (in_trail) {
 			resid += trail_len;
-			page = list_first_entry(&msg->trail->head,
+			page = list_first_entry(&msg->trail.pagelist->head,
 						struct page, lru);
 		} else if (msg->pages) {
 			page = msg->pages[con->out_msg_pos.page];

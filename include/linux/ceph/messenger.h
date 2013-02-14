@@ -64,6 +64,10 @@ struct ceph_messenger {
 	u32 required_features;
 };
 
+struct ceph_msg_data {
+	struct ceph_pagelist *pagelist;
+};
+
 /*
  * a single message.  it contains a header (src, dest, message type, etc.),
  * footer (crc values, mainly), a "front" message body, and possibly a
@@ -84,7 +88,7 @@ struct ceph_msg {
 	struct bio  *bio;		/* instead of pages/pagelist */
 	struct bio  *bio_iter;		/* bio iterator */
 #endif /* CONFIG_BLOCK */
-	struct ceph_pagelist *trail;	/* the trailing part of the data */
+	struct ceph_msg_data trail;	/* the trailing part of the data */
 
 	struct ceph_connection *con;
 	struct list_head list_head;
