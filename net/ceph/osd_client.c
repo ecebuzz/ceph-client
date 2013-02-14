@@ -1631,9 +1631,8 @@ int ceph_osdc_start_request(struct ceph_osd_client *osdc,
 {
 	int rc = 0;
 
-	req->r_request->pages = req->r_pages;
-	req->r_request->nr_pages = req->r_num_pages;
-	req->r_request->page_alignment = req->r_page_alignment;
+	ceph_msg_data_set_pages(req->r_request, req->r_pages, req->r_num_pages,
+				req->r_page_alignment);
 #ifdef CONFIG_BLOCK
 	req->r_request->bio = req->r_bio;
 #endif
@@ -1983,9 +1982,9 @@ static struct ceph_msg *get_reply(struct ceph_connection *con,
 			m = NULL;
 			goto out;
 		}
-		m->pages = req->r_pages;
-		m->nr_pages = req->r_num_pages;
-		m->page_alignment = req->r_page_alignment;
+
+		ceph_msg_data_set_pages(m, req->r_pages, req->r_num_pages,
+					req->r_page_alignment);
 #ifdef CONFIG_BLOCK
 		m->bio = req->r_bio;
 #endif
