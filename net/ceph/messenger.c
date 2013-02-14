@@ -1012,7 +1012,6 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 {
 	struct ceph_msg *msg = con->out_msg;
 	unsigned int data_len = le32_to_cpu(msg->hdr.data_len);
-	size_t len;
 	bool do_datacrc = !con->msgr->nocrc;
 	int ret;
 	bool in_trail = false;
@@ -1032,16 +1031,18 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 	 * been revoked, so use the zero page.
 	 */
 	while (data_len > con->out_msg_pos.data_pos) {
-		struct page *page = NULL;
-		int max_write = PAGE_SIZE;
-		int bio_offset = 0;
+		struct page *page;
+		int page_offset;
+		size_t len;
 		int resid;
 
+		page_offset = con->out_msg_pos.page_pos;
+		len = PAGE_SIZE - page_offset;
+
 		in_trail = in_trail || con->out_msg_pos.data_pos >= trail_off;
-		if (!in_trail)
-			resid = trail_off - con->out_msg_pos.data_pos;
+		resid = trail_off - con->out_msg_pos.data_pos;
 		if (in_trail) {
-			resid = data_len - con->out_msg_pos.data_pos;
+			resid += trail_len;
 			page = list_first_entry(&msg->trail->head,
 						struct page, lru);
 		} else if (msg->pages) {
@@ -1053,15 +1054,24 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 		} else if (msg->bio) {
 			struct bio_vec *bv;
 
+			/*
+			 * For a bio, the page position held in
+			 * con->out_msg_pos is really the position
+			 * relative to the start of the current bio
+			 * segment rather than the start of the page
+			 * itself.  Update the length limit to not
+			 * exceed the current bio segment, and the
+			 * page offset to be relative to its start.
+			 */
 			bv = bio_iovec_idx(msg->bio_iter, msg->bio_seg);
+			len = bv->bv_len - page_offset;
+			page_offset += bv->bv_offset;
 			page = bv->bv_page;
-			bio_offset = bv->bv_offset;
-			max_write = bv->bv_len;
 #endif
 		} else {
 			page = zero_page;
 		}
-		len = min_t(int, max_write - con->out_msg_pos.page_pos, resid);
+		len = min_t(int, len, resid);
 
 		if (do_datacrc && !con->out_msg_pos.did_page_crc) {
 			void *base;
@@ -1070,15 +1080,13 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 
 			kaddr = kmap(page);
 			BUG_ON(kaddr == NULL);
-			base = kaddr + con->out_msg_pos.page_pos + bio_offset;
+			base = kaddr + page_offset;
 			crc = crc32c(crc, base, len);
 			kunmap(page);
 			msg->footer.data_crc = cpu_to_le32(crc);
 			con->out_msg_pos.did_page_crc = true;
 		}
-		ret = ceph_tcp_sendpage(con->sock, page,
-				      con->out_msg_pos.page_pos + bio_offset,
-				      len, 1);
+		ret = ceph_tcp_sendpage(con->sock, page, page_offset, len, 1);
 		if (ret <= 0)
 			goto out;
 
