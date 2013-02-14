@@ -1010,12 +1010,12 @@ static struct page *msg_trail_page_get(struct ceph_msg *msg)
 	return list_first_entry(&msg->trail.pagelist->head, struct page, lru);
 }
 
-static void msg_trail_page_advance(struct ceph_msg *msg, struct page *page)
+static void msg_trail_page_advance(struct ceph_msg *msg)
 {
 	BUG_ON(msg->trail.type != MSG_DATA_PAGELIST);
 	BUG_ON(list_empty(&msg->trail.pagelist->head));
 
-	list_move_tail(&page->lru, &msg->trail.pagelist->head);
+	list_rotate_left(&msg->trail.pagelist->head);
 }
 
 static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
@@ -1036,7 +1036,7 @@ static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 	con->out_msg_pos.page++;
 	con->out_msg_pos.did_page_crc = false;
 	if (in_trail)
-		msg_trail_page_advance(msg, page);
+		msg_trail_page_advance(msg);
 	else if (msg->pagelist)
 		list_move_tail(&page->lru, &msg->pagelist->head);
 #ifdef CONFIG_BLOCK
