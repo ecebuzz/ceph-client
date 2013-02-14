@@ -1629,15 +1629,25 @@ int ceph_osdc_start_request(struct ceph_osd_client *osdc,
 			    struct ceph_osd_request *req,
 			    bool nofail)
 {
+	struct ceph_msg *msg = req->r_request;
+	u32 trail_len = req->r_trail.length;
 	int rc = 0;
 
-	req->r_request->pages = req->r_pages;
-	req->r_request->nr_pages = req->r_num_pages;
-	req->r_request->page_alignment = req->r_page_alignment;
+	/*
+	 * If there is outgoing data (before the trail), set up the
+	 * data fields in the request message.  Also set up the
+	 * request trail pointer if there's anything there.
+	 */
+	if (le32_to_cpu(msg->hdr.data_len) > trail_len) {
+		msg->pages = req->r_pages;
+		msg->nr_pages = req->r_num_pages;
+		msg->page_alignment = req->r_page_alignment;
 #ifdef CONFIG_BLOCK
-	req->r_request->bio = req->r_bio;
+		msg->bio = req->r_bio;
 #endif
-	req->r_request->trail = &req->r_trail;
+	}
+	if (trail_len)
+		msg->trail = &req->r_trail;
 
 	register_request(osdc, req);
 
