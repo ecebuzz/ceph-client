@@ -221,6 +221,12 @@ extern void ceph_con_keepalive(struct ceph_connection *con);
 
 extern void ceph_msg_data_set_pages(struct ceph_msg *msg, struct page **pages,
 				unsigned int page_count, size_t alignment);
+extern void ceph_msg_data_set_pagelist(struct ceph_msg *msg,
+				struct ceph_pagelist *pagelist,
+				unsigned int page_count);
+extern void ceph_msg_data_set_bio(struct ceph_msg *msg, struct bio *bio);
+extern void ceph_msg_data_set_trail(struct ceph_msg *msg,
+				struct ceph_pagelist *trail);
 
 extern struct ceph_msg *ceph_msg_new(int type, int front_len, gfp_t flags,
 				     bool can_fail);

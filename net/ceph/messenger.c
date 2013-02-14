@@ -2616,6 +2616,27 @@ void ceph_msg_data_set_pages(struct ceph_msg *msg, struct page **pages,
 }
 EXPORT_SYMBOL(ceph_msg_data_set_pages);
 
+void ceph_msg_data_set_pagelist(struct ceph_msg *msg,
+				struct ceph_pagelist *pagelist,
+				unsigned int page_count)
+{
+	msg->pagelist = pagelist;
+	msg->nr_pages = page_count;
+}
+EXPORT_SYMBOL(ceph_msg_data_set_pagelist);
+
+void ceph_msg_data_set_bio(struct ceph_msg *msg, struct bio *bio)
+{
+	msg->bio = bio;
+}
+EXPORT_SYMBOL(ceph_msg_data_set_bio);
+
+void ceph_msg_data_set_trail(struct ceph_msg *msg, struct ceph_pagelist *trail)
+{
+	msg->trail = trail;
+}
+EXPORT_SYMBOL(ceph_msg_data_set_trail);
+
 /*
  * construct a new message with given type, size
  * the new msg has a ref count of 1.

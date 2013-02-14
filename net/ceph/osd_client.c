@@ -1634,9 +1634,9 @@ int ceph_osdc_start_request(struct ceph_osd_client *osdc,
 	ceph_msg_data_set_pages(req->r_request, req->r_pages, req->r_num_pages,
 				req->r_page_alignment);
 #ifdef CONFIG_BLOCK
-	req->r_request->bio = req->r_bio;
+	ceph_msg_data_set_bio(req->r_request, req->r_bio);
 #endif
-	req->r_request->trail = &req->r_trail;
+	ceph_msg_data_set_trail(req->r_request, &req->r_trail);
 
 	register_request(osdc, req);
 
@@ -1986,7 +1986,7 @@ static struct ceph_msg *get_reply(struct ceph_connection *con,
 		ceph_msg_data_set_pages(m, req->r_pages, req->r_num_pages,
 					req->r_page_alignment);
 #ifdef CONFIG_BLOCK
-		m->bio = req->r_bio;
+		ceph_msg_data_set_bio(m, req->r_bio);
 #endif
 	}
 	*skip = 0;

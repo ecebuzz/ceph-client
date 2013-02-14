@@ -2599,11 +2599,11 @@ static void send_mds_reconnect(struct ceph_mds_client *mdsc,
 			goto fail;
 	}
 
-	reply->pagelist = pagelist;
+	ceph_msg_data_set_pagelist(reply, pagelist,
+				calc_pages_for(0, pagelist->length));
 	if (recon_state.flock)
 		reply->hdr.version = cpu_to_le16(2);
 	reply->hdr.data_len = cpu_to_le32(pagelist->length);
-	reply->nr_pages = calc_pages_for(0, pagelist->length);
 	ceph_con_send(&session->s_con, reply);
 
 	mutex_unlock(&session->s_mutex);
