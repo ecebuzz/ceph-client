@@ -1003,6 +1003,21 @@ void ceph_msg_trail_set_pagelist(struct ceph_msg *msg,
 }
 EXPORT_SYMBOL(ceph_msg_trail_set_pagelist);
 
+static struct page *msg_trail_page_get(struct ceph_msg *msg)
+{
+	BUG_ON(msg->trail.type != MSG_DATA_PAGELIST);
+
+	return list_first_entry(&msg->trail.pagelist->head, struct page, lru);
+}
+
+static void msg_trail_page_advance(struct ceph_msg *msg, struct page *page)
+{
+	BUG_ON(msg->trail.type != MSG_DATA_PAGELIST);
+	BUG_ON(list_empty(&msg->trail.pagelist->head));
+
+	list_move_tail(&page->lru, &msg->trail.pagelist->head);
+}
+
 static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 			size_t len, size_t sent, bool in_trail)
 {
@@ -1020,17 +1035,14 @@ static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 	con->out_msg_pos.page_pos = 0;
 	con->out_msg_pos.page++;
 	con->out_msg_pos.did_page_crc = false;
-	if (in_trail) {
-		BUG_ON(msg->trail.type != MSG_DATA_PAGELIST);
-		list_move_tail(&page->lru, &msg->trail.pagelist->head);
-	} else if (msg->pagelist) {
-		list_move_tail(&page->lru,
-			       &msg->pagelist->head);
+	if (in_trail)
+		msg_trail_page_advance(msg, page);
+	else if (msg->pagelist)
+		list_move_tail(&page->lru, &msg->pagelist->head);
 #ifdef CONFIG_BLOCK
-	} else if (msg->bio) {
+	else if (msg->bio)
 		iter_bio_next(&msg->bio_iter, &msg->bio_seg);
 #endif
-	}
 }
 
 /*
@@ -1078,8 +1090,7 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 		if (in_trail) {
 			BUG_ON(msg->trail.type != MSG_DATA_PAGELIST);
 			resid += data_len - trail_off;
-			page = list_first_entry(&msg->trail.pagelist->head,
-						struct page, lru);
+			page = msg_trail_page_get(msg);
 		} else if (msg->pages) {
 			page = msg->pages[con->out_msg_pos.page];
 		} else if (msg->pagelist) {
