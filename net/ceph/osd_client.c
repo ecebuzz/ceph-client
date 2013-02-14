@@ -1646,7 +1646,7 @@ int ceph_osdc_start_request(struct ceph_osd_client *osdc,
 #endif
 	}
 	if (trail_len)
-		msg->trail = &req->r_trail;
+		ceph_msg_trail_set_pagelist(msg, &req->r_trail);
 
 	register_request(osdc, req);
 

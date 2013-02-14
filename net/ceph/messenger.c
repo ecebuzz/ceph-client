@@ -972,6 +972,34 @@ out:
 	return ret;  /* done! */
 }
 
+static void ceph_msg_pagelist_init(struct ceph_msg *msg)
+{
+	msg->pagelist = NULL;
+}
+
+void ceph_msg_pagelist_set(struct ceph_msg *msg,
+				struct ceph_pagelist *pagelist)
+{
+	WARN_ON(msg->pagelist != NULL);
+
+	msg->pagelist = pagelist;
+}
+EXPORT_SYMBOL(ceph_msg_pagelist_set);
+
+static void ceph_msg_trail_init(struct ceph_msg *msg)
+{
+	msg->trail = NULL;
+}
+
+void ceph_msg_trail_set_pagelist(struct ceph_msg *msg,
+				struct ceph_pagelist *pagelist)
+{
+	WARN_ON(msg->trail != NULL);
+
+	msg->trail = pagelist;
+}
+EXPORT_SYMBOL(ceph_msg_trail_set_pagelist);
+
 static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 			size_t len, size_t sent, bool in_trail)
 {
@@ -2438,7 +2466,6 @@ out_unlock:
 }
 
 
-
 /*
  * initialize a new messenger instance
  */
@@ -2664,13 +2691,13 @@ struct ceph_msg *ceph_msg_new(int type, int front_len, gfp_t flags,
 	m->nr_pages = 0;
 	m->page_alignment = 0;
 	m->pages = NULL;
-	m->pagelist = NULL;
+	ceph_msg_pagelist_init(m);
 #ifdef	CONFIG_BLOCK
 	m->bio = NULL;
 	m->bio_iter = NULL;
 	m->bio_seg = 0;
 #endif	/* CONFIG_BLOCK */
-	m->trail = NULL;
+	ceph_msg_trail_init(m);
 
 	/* front */
 	if (front_len) {
@@ -2842,10 +2869,10 @@ void ceph_msg_last_put(struct kref *kref)
 	if (m->pagelist) {
 		ceph_pagelist_release(m->pagelist);
 		kfree(m->pagelist);
-		m->pagelist = NULL;
+		ceph_msg_pagelist_init(m);
 	}
-
-	m->trail = NULL;
+	/* Whoever set the trail is responsible for releasing it */
+	ceph_msg_trail_init(m);
 
 	if (m->pool)
 		ceph_msgpool_put(m->pool, m);
