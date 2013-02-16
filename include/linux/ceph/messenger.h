@@ -80,7 +80,7 @@ struct ceph_msg {
 	struct ceph_pagelist *pagelist; /* instead of pages */
 	unsigned int nr_pages;		/* # pages in array or list */
 #ifdef CONFIG_BLOCK
-	int bio_seg;			/* current bio segment */
+	unsigned int bio_seg;		/* current bio segment */
 	struct bio  *bio;		/* instead of pages/pagelist */
 	struct bio  *bio_iter;		/* bio iterator */
 #endif /* CONFIG_BLOCK */
