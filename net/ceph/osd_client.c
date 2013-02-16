@@ -1637,14 +1637,14 @@ int ceph_osdc_start_request(struct ceph_osd_client *osdc,
 	 * request trail pointer if there's anything there.
 	 */
 	if (le32_to_cpu(msg->hdr.data_len) > trail_len) {
-		ceph_msg_data_set_pages(req->r_request, req->r_pages,
+		ceph_msg_data_out_set_pages(req->r_request, req->r_pages,
 				req->r_num_pages, req->r_page_alignment);
 #ifdef CONFIG_BLOCK
-		ceph_msg_data_set_bio(req->r_request, req->r_bio);
+		ceph_msg_data_out_set_bio(req->r_request, req->r_bio);
 #endif
 	}
 	if (trail_len)
-		ceph_msg_data_set_trail(req->r_request, &req->r_trail);
+		ceph_msg_data_out_set_trail(req->r_request, &req->r_trail);
 
 	register_request(osdc, req);
 
@@ -1991,10 +1991,10 @@ static struct ceph_msg *get_reply(struct ceph_connection *con,
 			goto out;
 		}
 
-		ceph_msg_data_set_pages(m, req->r_pages, req->r_num_pages,
+		ceph_msg_data_in_set_pages(m, req->r_pages, req->r_num_pages,
 					req->r_page_alignment);
 #ifdef CONFIG_BLOCK
-		ceph_msg_data_set_bio(m, req->r_bio);
+		ceph_msg_data_in_set_bio(m, req->r_bio);
 #endif
 	}
 	*skip = 0;

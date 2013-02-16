@@ -75,16 +75,28 @@ struct ceph_msg {
 	struct kvec front;              /* unaligned blobs of message */
 	struct ceph_buffer *middle;
 
-	struct page **pages;		/* data payload.  NOT OWNER. */
-	unsigned int page_alignment;	/* io offset in first page */
-	struct ceph_pagelist *pagelist; /* instead of pages */
-	unsigned int nr_pages;		/* # pages in array or list */
+	struct {
+		struct page **pages;		/* data payload.  NOT OWNER. */
+		unsigned int page_alignment;	/* io offset in first page */
+		unsigned int nr_pages;		/* # pages in array or list */
+		struct ceph_pagelist *pagelist; /* instead of pages */
+		struct ceph_pagelist *trail;	/* trailing part of the data */
 #ifdef CONFIG_BLOCK
-	unsigned int bio_seg;		/* current bio segment */
-	struct bio  *bio;		/* instead of pages/pagelist */
-	struct bio  *bio_iter;		/* bio iterator */
+		unsigned int bio_seg;		/* current bio segment */
+		struct bio  *bio;		/* instead of pages/pagelist */
+		struct bio  *bio_iter;		/* bio iterator */
 #endif /* CONFIG_BLOCK */
-	struct ceph_pagelist *trail;	/* the trailing part of the data */
+	} data_out;
+	struct {
+		struct page **pages;		/* data payload.  NOT OWNER. */
+		unsigned int page_alignment;	/* io offset in first page */
+		unsigned int nr_pages;		/* # pages in array or list */
+#ifdef CONFIG_BLOCK
+		unsigned int bio_seg;		/* current bio segment */
+		struct bio  *bio;		/* instead of pages/pagelist */
+		struct bio  *bio_iter;		/* bio iterator */
+#endif /* CONFIG_BLOCK */
+	} data_in;
 
 	struct ceph_connection *con;
 	struct list_head list_head;
@@ -219,13 +231,18 @@ extern void ceph_msg_revoke_incoming(struct ceph_msg *msg);
 
 extern void ceph_con_keepalive(struct ceph_connection *con);
 
-extern void ceph_msg_data_set_pages(struct ceph_msg *msg, struct page **pages,
-				unsigned int page_count, size_t alignment);
-extern void ceph_msg_data_set_pagelist(struct ceph_msg *msg,
+extern void ceph_msg_data_out_set_pages(struct ceph_msg *msg,
+				struct page **pages, unsigned int page_count,
+				size_t alignment);
+extern void ceph_msg_data_in_set_pages(struct ceph_msg *msg,
+				struct page **pages, unsigned int page_count,
+				size_t alignment);
+extern void ceph_msg_data_out_set_pagelist(struct ceph_msg *msg,
 				struct ceph_pagelist *pagelist,
 				unsigned int page_count);
-extern void ceph_msg_data_set_bio(struct ceph_msg *msg, struct bio *bio);
-extern void ceph_msg_data_set_trail(struct ceph_msg *msg,
+extern void ceph_msg_data_out_set_bio(struct ceph_msg *msg, struct bio *bio);
+extern void ceph_msg_data_in_set_bio(struct ceph_msg *msg, struct bio *bio);
+extern void ceph_msg_data_out_set_trail(struct ceph_msg *msg,
 				struct ceph_pagelist *trail);
 
 extern struct ceph_msg *ceph_msg_new(int type, int front_len, gfp_t flags,

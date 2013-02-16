@@ -681,13 +681,14 @@ static void prepare_write_message_data(struct ceph_connection *con)
 
 	/* initialize page iterator */
 	con->out_msg_pos.page = 0;
-	if (msg->pages)
-		con->out_msg_pos.page_pos = msg->page_alignment;
+	if (msg->data_out.pages)
+		con->out_msg_pos.page_pos = msg->data_out.page_alignment;
 	else
 		con->out_msg_pos.page_pos = 0;
 #ifdef CONFIG_BLOCK
-	if (msg->bio)
-		init_bio_iter(msg->bio, &msg->bio_iter, &msg->bio_seg);
+	if (msg->data_out.bio)
+		init_bio_iter(msg->data_out.bio, &msg->data_out.bio_iter,
+					&msg->data_out.bio_seg);
 #endif
 	con->out_msg_pos.data_pos = 0;
 	con->out_msg_pos.did_page_crc = false;
@@ -756,14 +757,14 @@ static void prepare_write_message(struct ceph_connection *con)
 	}
 #ifdef CONFIG_BLOCK
 	else
-		m->bio_iter = NULL;
+		m->data_out.bio_iter = NULL;
 #endif
 
 	dout("prepare_write_message %p seq %lld type %d len %d+%d+%d %d pgs\n",
 	     m, con->out_seq, le16_to_cpu(m->hdr.type),
 	     le32_to_cpu(m->hdr.front_len), le32_to_cpu(m->hdr.middle_len),
 	     le32_to_cpu(m->hdr.data_len),
-	     m->nr_pages);
+	     m->data_out.nr_pages);
 	BUG_ON(le32_to_cpu(m->hdr.front_len) != m->front.iov_len);
 
 	/* tag + hdr + front + middle */
@@ -991,14 +992,12 @@ static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 	con->out_msg_pos.page++;
 	con->out_msg_pos.did_page_crc = false;
 	if (in_trail)
-		list_move_tail(&page->lru,
-			       &msg->trail->head);
-	else if (msg->pagelist)
-		list_move_tail(&page->lru,
-			       &msg->pagelist->head);
+		list_move_tail(&page->lru, &msg->data_out.trail->head);
+	else if (msg->data_out.pagelist)
+		list_move_tail(&page->lru, &msg->data_out.pagelist->head);
 #ifdef CONFIG_BLOCK
-	else if (msg->bio)
-		iter_bio_next(&msg->bio_iter, &msg->bio_seg);
+	else if (msg->data_out.bio)
+		iter_bio_next(&msg->data_out.bio_iter, &msg->data_out.bio_seg);
 #endif
 }
 
@@ -1018,11 +1017,11 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 	int ret;
 	int total_max_write;
 	bool in_trail = false;
-	const size_t trail_len = (msg->trail ? msg->trail->length : 0);
-	const size_t trail_off = data_len - trail_len;
+	size_t trail_len;
+	size_t trail_off;
 
 	dout("write_partial_msg_pages %p msg %p page %d/%d offset %d\n",
-	     con, msg, con->out_msg_pos.page, msg->nr_pages,
+	     con, msg, con->out_msg_pos.page, msg->data_out.nr_pages,
 	     con->out_msg_pos.page_pos);
 
 	/*
@@ -1033,6 +1032,8 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 	 * need to map the page.  If we have no pages, they have
 	 * been revoked, so use the zero page.
 	 */
+	trail_len = msg->data_out.trail ? msg->data_out.trail->length : 0;
+	trail_off = data_len - trail_len;
 	while (data_len > con->out_msg_pos.data_pos) {
 		struct page *page = NULL;
 		int max_write = PAGE_SIZE;
@@ -1045,18 +1046,19 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 		if (in_trail) {
 			total_max_write = data_len - con->out_msg_pos.data_pos;
 
-			page = list_first_entry(&msg->trail->head,
+			page = list_first_entry(&msg->data_out.trail->head,
 						struct page, lru);
-		} else if (msg->pages) {
-			page = msg->pages[con->out_msg_pos.page];
-		} else if (msg->pagelist) {
-			page = list_first_entry(&msg->pagelist->head,
+		} else if (msg->data_out.pages) {
+			page = msg->data_out.pages[con->out_msg_pos.page];
+		} else if (msg->data_out.pagelist) {
+			page = list_first_entry(&msg->data_out.pagelist->head,
 						struct page, lru);
 #ifdef CONFIG_BLOCK
-		} else if (msg->bio) {
+		} else if (msg->data_out.bio) {
 			struct bio_vec *bv;
 
-			bv = bio_iovec_idx(msg->bio_iter, msg->bio_seg);
+			bv = bio_iovec_idx(msg->data_out.bio_iter,
+						msg->data_out.bio_seg);
 			page = bv->bv_page;
 			bio_offset = bv->bv_offset;
 			max_write = bv->bv_len;
@@ -1889,15 +1891,16 @@ static int read_partial_message(struct ceph_connection *con)
 			m->middle->vec.iov_len = 0;
 
 		con->in_msg_pos.page = 0;
-		if (m->pages)
-			con->in_msg_pos.page_pos = m->page_alignment;
+		if (m->data_in.pages)
+			con->in_msg_pos.page_pos = m->data_in.page_alignment;
 		else
 			con->in_msg_pos.page_pos = 0;
 		con->in_msg_pos.data_pos = 0;
 
 #ifdef CONFIG_BLOCK
-		if (m->bio)
-			init_bio_iter(m->bio, &m->bio_iter, &m->bio_seg);
+		if (m->data_in.bio)
+			init_bio_iter(m->data_in.bio, &m->data_in.bio_iter,
+						&m->data_in.bio_seg);
 #endif
 	}
 
@@ -1918,16 +1921,17 @@ static int read_partial_message(struct ceph_connection *con)
 
 	/* (page) data */
 	while (con->in_msg_pos.data_pos < data_len) {
-		if (m->pages) {
-			ret = read_partial_message_pages(con, m->pages,
+		if (m->data_in.pages) {
+			ret = read_partial_message_pages(con, m->data_in.pages,
 						 data_len, do_datacrc);
 			if (ret <= 0)
 				return ret;
 #ifdef CONFIG_BLOCK
-		} else if (m->bio) {
-			BUG_ON(!m->bio_iter);
+		} else if (m->data_in.bio) {
+			BUG_ON(!m->data_in.bio_iter);
 			ret = read_partial_message_bio(con,
-						 &m->bio_iter, &m->bio_seg,
+						 &m->data_in.bio_iter,
+						 &m->data_in.bio_seg,
 						 data_len, do_datacrc);
 			if (ret <= 0)
 				return ret;
@@ -2609,35 +2613,51 @@ void ceph_con_keepalive(struct ceph_connection *con)
 }
 EXPORT_SYMBOL(ceph_con_keepalive);
 
-void ceph_msg_data_set_pages(struct ceph_msg *msg, struct page **pages,
+void ceph_msg_data_out_set_pages(struct ceph_msg *msg, struct page **pages,
 		unsigned int page_count, size_t alignment)
 {
-	msg->pages = pages;
-	msg->nr_pages = page_count;
-	msg->page_alignment = alignment;
+	msg->data_out.pages = pages;
+	msg->data_out.nr_pages = page_count;
+	msg->data_out.page_alignment = alignment;
 }
-EXPORT_SYMBOL(ceph_msg_data_set_pages);
+EXPORT_SYMBOL(ceph_msg_data_out_set_pages);
 
-void ceph_msg_data_set_pagelist(struct ceph_msg *msg,
+void ceph_msg_data_in_set_pages(struct ceph_msg *msg, struct page **pages,
+		unsigned int page_count, size_t alignment)
+{
+	msg->data_in.pages = pages;
+	msg->data_in.nr_pages = page_count;
+	msg->data_in.page_alignment = alignment;
+}
+EXPORT_SYMBOL(ceph_msg_data_in_set_pages);
+
+void ceph_msg_data_out_set_pagelist(struct ceph_msg *msg,
 				struct ceph_pagelist *pagelist,
 				unsigned int page_count)
 {
-	msg->pagelist = pagelist;
-	msg->nr_pages = page_count;
+	msg->data_out.pagelist = pagelist;
+	msg->data_out.nr_pages = page_count;
 }
-EXPORT_SYMBOL(ceph_msg_data_set_pagelist);
+EXPORT_SYMBOL(ceph_msg_data_out_set_pagelist);
 
-void ceph_msg_data_set_bio(struct ceph_msg *msg, struct bio *bio)
+void ceph_msg_data_out_set_bio(struct ceph_msg *msg, struct bio *bio)
 {
-	msg->bio = bio;
+	msg->data_out.bio = bio;
 }
-EXPORT_SYMBOL(ceph_msg_data_set_bio);
+EXPORT_SYMBOL(ceph_msg_data_out_set_bio);
 
-void ceph_msg_data_set_trail(struct ceph_msg *msg, struct ceph_pagelist *trail)
+void ceph_msg_data_in_set_bio(struct ceph_msg *msg, struct bio *bio)
 {
-	msg->trail = trail;
+	msg->data_in.bio = bio;
 }
-EXPORT_SYMBOL(ceph_msg_data_set_trail);
+EXPORT_SYMBOL(ceph_msg_data_in_set_bio);
+
+void ceph_msg_data_out_set_trail(struct ceph_msg *msg,
+				struct ceph_pagelist *trail)
+{
+	msg->data_out.trail = trail;
+}
+EXPORT_SYMBOL(ceph_msg_data_out_set_trail);
 
 /*
  * construct a new message with given type, size
@@ -2679,16 +2699,25 @@ struct ceph_msg *ceph_msg_new(int type, int front_len, gfp_t flags,
 	m->middle = NULL;
 
 	/* data */
-	m->nr_pages = 0;
-	m->page_alignment = 0;
-	m->pages = NULL;
-	m->pagelist = NULL;
+	m->data_out.nr_pages = 0;
+	m->data_out.pages = NULL;
+	m->data_out.page_alignment = 0;
+	m->data_out.pagelist = NULL;
 #ifdef	CONFIG_BLOCK
-	m->bio = NULL;
-	m->bio_iter = NULL;
-	m->bio_seg = 0;
+	m->data_out.bio = NULL;
+	m->data_out.bio_iter = NULL;
+	m->data_out.bio_seg = 0;
 #endif	/* CONFIG_BLOCK */
-	m->trail = NULL;
+	m->data_out.trail = NULL;
+
+	m->data_in.nr_pages = 0;
+	m->data_in.pages = NULL;
+	m->data_in.page_alignment = 0;
+#ifdef	CONFIG_BLOCK
+	m->data_in.bio = NULL;
+	m->data_in.bio_iter = NULL;
+	m->data_in.bio_seg = 0;
+#endif	/* CONFIG_BLOCK */
 
 	/* front */
 	if (front_len) {
@@ -2810,7 +2839,8 @@ static int ceph_con_in_msg_alloc(struct ceph_connection *con, int *skip)
 		}
 		con->in_msg->con = con->ops->get(con);
 		BUG_ON(con->in_msg->con == NULL);
-		con->in_msg->page_alignment = le16_to_cpu(hdr->data_off);
+		con->in_msg->data_in.page_alignment =
+					le16_to_cpu(hdr->data_off);
 	}
 	memcpy(&con->in_msg->hdr, &con->in_hdr, sizeof(con->in_hdr));
 
@@ -2854,16 +2884,17 @@ void ceph_msg_last_put(struct kref *kref)
 		ceph_buffer_put(m->middle);
 		m->middle = NULL;
 	}
-	m->nr_pages = 0;
-	m->pages = NULL;
-
-	if (m->pagelist) {
-		ceph_pagelist_release(m->pagelist);
-		kfree(m->pagelist);
-		m->pagelist = NULL;
+	m->data_out.nr_pages = 0;
+	m->data_out.pages = NULL;
+	if (m->data_out.pagelist) {
+		ceph_pagelist_release(m->data_out.pagelist);
+		kfree(m->data_out.pagelist);
+		m->data_out.pagelist = NULL;
 	}
+	m->data_out.trail = NULL;
 
-	m->trail = NULL;
+	m->data_in.nr_pages = 0;
+	m->data_in.pages = NULL;
 
 	if (m->pool)
 		ceph_msgpool_put(m->pool, m);
@@ -2874,8 +2905,9 @@ EXPORT_SYMBOL(ceph_msg_last_put);
 
 void ceph_msg_dump(struct ceph_msg *msg)
 {
-	pr_debug("msg_dump %p (front_max %d nr_pages %d)\n", msg,
-		 msg->front_max, msg->nr_pages);
+	pr_debug("msg_dump %p (front_max %d out nr_pages %d in nr_pages %d)\n",
+		msg, msg->front_max, msg->data_out.nr_pages,
+		msg->data_in.nr_pages);
 	print_hex_dump(KERN_DEBUG, "header: ",
 		       DUMP_PREFIX_OFFSET, 16, 1,
 		       &msg->hdr, sizeof(msg->hdr), true);

@@ -198,7 +198,7 @@ struct ceph_mds_request {
 	u32 r_direct_hash;      /* choose dir frag based on this dentry hash */
 	bool r_direct_is_hash;  /* true if r_direct_hash is valid */
 
-	/* data payload is used for xattr ops */
+	/* data payload is outbound only, used for xattr ops */
 	struct page **r_pages;
 	int r_num_pages;
 	int r_data_len;
