@@ -2341,50 +2341,50 @@ static void con_work(struct work_struct *work)
 	bool fault;
 
 	mutex_lock(&con->mutex);
-while (true) {
-	int ret;
+	while (true) {
+		int ret;
 
-	if ((fault = con_sock_closed(con))) {
-		dout("con_work %p SOCK_CLOSED\n", con);
-		break;
-	}
-	if (con_backoff(con)) {
-		dout("con_work %p BACKOFF\n", con);
-		break;
-	}
-	if (con->state == CON_STATE_STANDBY) {
-		dout("con_work %p STANDBY\n", con);
-		break;
-	}
-	if (con->state == CON_STATE_CLOSED) {
-		dout("con_work %p CLOSED\n", con);
-		BUG_ON(con->sock);
-		break;
-	}
-	if (con->state == CON_STATE_PREOPEN) {
-		dout("con_work %p OPENING\n", con);
-		BUG_ON(con->sock);
-	}
+		if ((fault = con_sock_closed(con))) {
+			dout("con_work %p SOCK_CLOSED\n", con);
+			break;
+		}
+		if (con_backoff(con)) {
+			dout("con_work %p BACKOFF\n", con);
+			break;
+		}
+		if (con->state == CON_STATE_STANDBY) {
+			dout("con_work %p STANDBY\n", con);
+			break;
+		}
+		if (con->state == CON_STATE_CLOSED) {
+			dout("con_work %p CLOSED\n", con);
+			BUG_ON(con->sock);
+			break;
+		}
+		if (con->state == CON_STATE_PREOPEN) {
+			dout("con_work %p OPENING\n", con);
+			BUG_ON(con->sock);
+		}
 
-	ret = try_read(con);
-	if (ret < 0) {
-		if (ret == -EAGAIN)
-			continue;
-		con->error_msg = "socket error on read";
-		fault = true;
-		break;
-	}
+		ret = try_read(con);
+		if (ret < 0) {
+			if (ret == -EAGAIN)
+				continue;
+			con->error_msg = "socket error on read";
+			fault = true;
+			break;
+		}
 
-	ret = try_write(con);
-	if (ret < 0) {
-		if (ret == -EAGAIN)
-			continue;
-		con->error_msg = "socket error on write";
-		fault = true;
-	}
+		ret = try_write(con);
+		if (ret < 0) {
+			if (ret == -EAGAIN)
+				continue;
+			con->error_msg = "socket error on write";
+			fault = true;
+		}
 
-	break;	/* If we make it to here, we're done */
-}
+		break;	/* If we make it to here, we're done */
+	}
 	if (fault)
 		con_fault(con);
 	mutex_unlock(&con->mutex);
