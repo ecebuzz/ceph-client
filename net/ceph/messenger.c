@@ -2338,28 +2338,28 @@ static void con_work(struct work_struct *work)
 {
 	struct ceph_connection *con = container_of(work, struct ceph_connection,
 						   work.work);
-	bool fault = false;
-	int ret;
+	bool fault;
 
 	mutex_lock(&con->mutex);
-restart:
-	if (con_sock_closed(con)) {
+while (true) {
+	int ret;
+
+	if ((fault = con_sock_closed(con))) {
 		dout("con_work %p SOCK_CLOSED\n", con);
-		fault = true;
-		goto done;
+		break;
 	}
 	if (con_backoff(con)) {
 		dout("con_work %p BACKOFF\n", con);
-		goto done;
+		break;
 	}
 	if (con->state == CON_STATE_STANDBY) {
 		dout("con_work %p STANDBY\n", con);
-		goto done;
+		break;
 	}
 	if (con->state == CON_STATE_CLOSED) {
 		dout("con_work %p CLOSED\n", con);
 		BUG_ON(con->sock);
-		goto done;
+		break;
 	}
 	if (con->state == CON_STATE_PREOPEN) {
 		dout("con_work %p OPENING\n", con);
@@ -2367,22 +2367,24 @@ restart:
 	}
 
 	ret = try_read(con);
-	if (ret == -EAGAIN)
-		goto restart;
 	if (ret < 0) {
+		if (ret == -EAGAIN)
+			continue;
 		con->error_msg = "socket error on read";
 		fault = true;
-		goto done;
+		break;
 	}
 
 	ret = try_write(con);
-	if (ret == -EAGAIN)
-		goto restart;
 	if (ret < 0) {
+		if (ret == -EAGAIN)
+			continue;
 		con->error_msg = "socket error on write";
 		fault = true;
 	}
-done:
+
+	break;	/* If we make it to here, we're done */
+}
 	if (fault)
 		con_fault(con);
 	mutex_unlock(&con->mutex);
