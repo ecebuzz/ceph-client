@@ -2296,6 +2296,24 @@ static bool con_sock_closed(struct ceph_connection *con)
 	return true;
 }
 
+static bool con_backoff(struct ceph_connection *con)
+{
+	int ret;
+
+	if (!test_and_clear_bit(CON_FLAG_BACKOFF, &con->flags))
+		return false;
+
+	ret = queue_con_delay(con, round_jiffies_relative(con->delay));
+	if (ret) {
+		dout("%s %p FAILED to back off %lu\n",
+			__func__, con, con->delay);
+		BUG_ON(ret == -ENOENT);
+		set_bit(CON_FLAG_BACKOFF, &con->flags);
+	}
+
+	return true;
+}
+
 /*
  * Do some work on a connection.  Drop a connection ref when we're done.
  */
@@ -2307,21 +2325,14 @@ static void con_work(struct work_struct *work)
 
 	mutex_lock(&con->mutex);
 restart:
-	if (con_sock_closed(con))
+	if (con_sock_closed(con)) {
+		dout("con_work %p SOCK_CLOSED\n", con);
 		goto fault;
-
-	if (test_and_clear_bit(CON_FLAG_BACKOFF, &con->flags)) {
-		dout("con_work %p backing off\n", con);
-		ret = queue_con_delay(con, round_jiffies_relative(con->delay));
-		if (ret) {
-			dout("con_work %p FAILED to back off %lu\n", con,
-			     con->delay);
-			BUG_ON(ret == -ENOENT);
-			set_bit(CON_FLAG_BACKOFF, &con->flags);
-		}
+	}
+	if (con_backoff(con)) {
+		dout("con_work %p BACKOFF\n", con);
 		goto done;
 	}
-
 	if (con->state == CON_STATE_STANDBY) {
 		dout("con_work %p STANDBY\n", con);
 		goto done;
@@ -2332,7 +2343,7 @@ restart:
 		goto done;
 	}
 	if (con->state == CON_STATE_PREOPEN) {
-		dout("con_work OPENING\n");
+		dout("con_work %p OPENING\n", con);
 		BUG_ON(con->sock);
 	}
 
