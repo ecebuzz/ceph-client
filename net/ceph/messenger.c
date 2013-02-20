@@ -538,6 +538,7 @@ static int con_close_socket(struct ceph_connection *con)
  */
 static void ceph_msg_remove(struct ceph_msg *msg)
 {
+	dout("%s", __func__);
 	list_del_init(&msg->list_head);
 	BUG_ON(msg->con == NULL);
 	msg->con->ops->put(msg->con);
@@ -585,6 +586,7 @@ static void reset_connection(struct ceph_connection *con)
  */
 void ceph_con_close(struct ceph_connection *con)
 {
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 	mutex_lock(&con->mutex);
 	dout("con_close %p peer %s\n", con,
 	     ceph_pr_addr(&con->peer_addr.in_addr));
@@ -600,6 +602,7 @@ void ceph_con_close(struct ceph_connection *con)
 	cancel_delayed_work(&con->work);
 	con_close_socket(con);
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 }
 EXPORT_SYMBOL(ceph_con_close);
 
@@ -610,6 +613,7 @@ void ceph_con_open(struct ceph_connection *con,
 		   __u8 entity_type, __u64 entity_num,
 		   struct ceph_entity_addr *addr)
 {
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 	mutex_lock(&con->mutex);
 	dout("con_open %p %s\n", con, ceph_pr_addr(&addr->in_addr));
 
@@ -622,6 +626,7 @@ void ceph_con_open(struct ceph_connection *con,
 	memcpy(&con->peer_addr, addr, sizeof(*addr));
 	con->delay = 0;      /* reset backoff memory */
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 	queue_con(con);
 }
 EXPORT_SYMBOL(ceph_con_open);
@@ -901,7 +906,9 @@ static struct ceph_auth_handshake *get_connect_authorizer(struct ceph_connection
 
 	/* Can't hold the mutex while getting authorizer */
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 	auth = con->ops->get_authorizer(con, auth_proto, con->auth_retry);
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 	mutex_lock(&con->mutex);
 
 	if (IS_ERR(auth))
@@ -1627,9 +1634,11 @@ static int process_connect(struct ceph_connection *con)
 
 		/* Tell ceph about it. */
 		mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 		pr_info("reset on %s%lld\n", ENTITY_NAME(con->peer_name));
 		if (con->ops->peer_reset)
 			con->ops->peer_reset(con);
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 		mutex_lock(&con->mutex);
 		if (con->state != CON_STATE_NEGOTIATING)
 			return -EAGAIN;
@@ -2039,6 +2048,7 @@ static void process_message(struct ceph_connection *con)
 
 	con->in_seq++;
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 
 	dout("===== %p %llu from %s%lld %d=%s len %d+%d (%u %u %u) =====\n",
 	     msg, le64_to_cpu(msg->hdr.seq),
@@ -2050,6 +2060,7 @@ static void process_message(struct ceph_connection *con)
 	     con->in_front_crc, con->in_middle_crc, con->in_data_crc);
 	con->ops->dispatch(con, msg);
 
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 	mutex_lock(&con->mutex);
 }
 
@@ -2354,6 +2365,7 @@ static void con_work(struct work_struct *work)
 						   work.work);
 	int ret;
 
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 	mutex_lock(&con->mutex);
 restart:
 	if (con_sock_closed(con))
@@ -2403,6 +2415,7 @@ restart:
 
 done:
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 done_unlocked:
 	con->ops->put(con);
 	return;
@@ -2468,6 +2481,7 @@ static void ceph_fault(struct ceph_connection *con)
 
 out_unlock:
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 	/*
 	 * in case we faulted due to authentication, invalidate our
 	 * current tickets so that we can get new ones.
@@ -2534,12 +2548,14 @@ void ceph_con_send(struct ceph_connection *con, struct ceph_msg *msg)
 	BUG_ON(msg->front.iov_len != le32_to_cpu(msg->hdr.front_len));
 	msg->needs_out_seq = true;
 
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 	mutex_lock(&con->mutex);
 
 	if (con->state == CON_STATE_CLOSED) {
 		dout("con_send %p closed, dropping %p\n", con, msg);
 		ceph_msg_put(msg);
 		mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 		return;
 	}
 
@@ -2558,6 +2574,7 @@ void ceph_con_send(struct ceph_connection *con, struct ceph_msg *msg)
 
 	clear_standby(con);
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 
 	/* if there wasn't anything waiting to send before, queue
 	 * new work */
@@ -2576,6 +2593,7 @@ void ceph_msg_revoke(struct ceph_msg *msg)
 	if (!con)
 		return;		/* Message not in our possession */
 
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 	mutex_lock(&con->mutex);
 	if (!list_empty(&msg->list_head)) {
 		dout("%s %p msg %p - was on queue\n", __func__, con, msg);
@@ -2599,6 +2617,7 @@ void ceph_msg_revoke(struct ceph_msg *msg)
 		ceph_msg_put(msg);
 	}
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 }
 
 /*
@@ -2616,6 +2635,7 @@ void ceph_msg_revoke_incoming(struct ceph_msg *msg)
 	}
 
 	con = msg->con;
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 	mutex_lock(&con->mutex);
 	if (con->in_msg == msg) {
 		unsigned int front_len = le32_to_cpu(con->in_hdr.front_len);
@@ -2639,6 +2659,7 @@ void ceph_msg_revoke_incoming(struct ceph_msg *msg)
 		     __func__, con, con->in_msg, msg);
 	}
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 }
 
 /*
@@ -2647,9 +2668,11 @@ void ceph_msg_revoke_incoming(struct ceph_msg *msg)
 void ceph_con_keepalive(struct ceph_connection *con)
 {
 	dout("con_keepalive %p\n", con);
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 	mutex_lock(&con->mutex);
 	clear_standby(con);
 	mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 	if (con_flag_test_and_set(con, CON_FLAG_KEEPALIVE_PENDING) == 0 &&
 	    con_flag_test_and_set(con, CON_FLAG_WRITE_PENDING) == 0)
 		queue_con(con);
@@ -2796,7 +2819,9 @@ static int ceph_con_in_msg_alloc(struct ceph_connection *con, int *skip)
 		struct ceph_msg *msg;
 
 		mutex_unlock(&con->mutex);
+dout("%s: %u: mutex_unlock(%p)\n", __func__ smp_processor_id(), con);
 		msg = con->ops->alloc_msg(con, hdr, skip);
+dout("%s: %u: mutex_lock(%p)\n", __func__ smp_processor_id(), con);
 		mutex_lock(&con->mutex);
 		if (con->state != CON_STATE_OPEN) {
 			if (msg)

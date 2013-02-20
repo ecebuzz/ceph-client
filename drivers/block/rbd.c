@@ -1205,6 +1205,7 @@ static int rbd_obj_request_submit(struct ceph_osd_client *osdc,
 
 static void rbd_img_request_complete(struct rbd_img_request *img_request)
 {
+	dout("%s: %p\n", __func__, img_request);
 	if (img_request->callback)
 		img_request->callback(img_request);
 	else
@@ -1239,11 +1240,14 @@ static bool obj_request_done_test(struct rbd_obj_request *obj_request)
 static void rbd_osd_trivial_callback(struct rbd_obj_request *obj_request,
 				struct ceph_osd_op *op)
 {
+	dout("%s: %p\n", __func__, obj_request);
 	obj_request_done_set(obj_request);
 }
 
 static void rbd_obj_request_complete(struct rbd_obj_request *obj_request)
 {
+	dout("%s: %p callback %p\n", __func__, obj_request,
+		obj_request->callback);
 	if (obj_request->callback)
 		obj_request->callback(obj_request);
 	else
@@ -1255,6 +1259,7 @@ static void rbd_osd_read_callback(struct rbd_obj_request *obj_request,
 {
 	u64 xferred;
 
+	dout("%s: %p\n", __func__, obj_request);
 	/*
 	 * We support a 64-bit length, but ultimately it has to be
 	 * passed to blk_end_request(), which takes an unsigned int.
@@ -1275,7 +1280,11 @@ static void rbd_osd_read_callback(struct rbd_obj_request *obj_request,
 static void rbd_osd_write_callback(struct rbd_obj_request *obj_request,
 				struct ceph_osd_op *op)
 {
+	dout("%s: %p\n", __func__, obj_request);
 	obj_request->xferred = le64_to_cpu(op->extent.length);
+	if (obj_request->xferred != obj_request->length)
+		printk("%s: wrote %llu want %llu\n", __func__,
+			obj_request->xferred, obj_request->length);
 	obj_request_done_set(obj_request);
 }
 
@@ -1286,6 +1295,7 @@ static void rbd_osd_write_callback(struct rbd_obj_request *obj_request,
 static void rbd_osd_stat_callback(struct rbd_obj_request *obj_request,
 				struct ceph_osd_op *op)
 {
+	dout("%s: %p\n", __func__, obj_request);
 	obj_request_done_set(obj_request);
 }
 
@@ -1298,6 +1308,7 @@ static void rbd_osd_req_callback(struct ceph_osd_request *osd_req,
 	u32 num_ops;
 	u16 opcode;
 
+	dout("%s: %p %p\n", __func__, osd_req, msg);
 	rbd_assert(osd_req == obj_request->osd_req);
 	rbd_assert(!!obj_request->img_request ^
 				(obj_request->which == BAD_WHICH));
@@ -1627,6 +1638,7 @@ static void rbd_img_obj_callback(struct rbd_obj_request *obj_request)
 	bool more = true;
 
 	img_request = obj_request->img_request;
+	dout("%s: img %p obj %p\n", __func__, img_request, obj_request);
 	rbd_assert(img_request != NULL);
 	rbd_assert(img_request->rq != NULL);
 	rbd_assert(which != BAD_WHICH);
