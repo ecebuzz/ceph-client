@@ -1638,12 +1638,17 @@ static void rbd_img_obj_callback(struct rbd_obj_request *obj_request)
 	bool more = true;
 
 	img_request = obj_request->img_request;
-	dout("%s: img %p obj %p\n", __func__, img_request, obj_request);
+
 	rbd_assert(img_request != NULL);
 	rbd_assert(img_request->rq != NULL);
+	rbd_assert(img_request->obj_request_count > 0);
 	rbd_assert(which != BAD_WHICH);
-	rbd_assert(which < img_request->obj_request_count);
 	rbd_assert(which >= img_request->next_completion);
+	rbd_assert(which < img_request->obj_request_count);
+
+	dout("%s: img %p obj %p\n", __func__, img_request, obj_request);
+	dout("%s: which %u next_compl %u req_count %u\n", __func__, which,
+		img_request->next_completion, img_request->obj_request_count);
 
 	spin_lock_irq(&img_request->completion_lock);
 	if (which != img_request->next_completion)
@@ -1930,6 +1935,19 @@ static void rbd_request_fn(struct request_queue *q)
 		/* Ignore any non-FS requests that filter through. */
 
 		if (rq->cmd_type != REQ_TYPE_FS) {
+			dout("%s: non-fs request type %d\n", __func__,
+				(int) rq->cmd_type);
+			__blk_end_request_all(rq, 0);
+			continue;
+		}
+
+		/* Ignore/skip any zero-length requests */
+
+		offset = (u64) blk_rq_pos(rq) << SECTOR_SHIFT;
+		length = (u64) blk_rq_bytes(rq);
+
+		if (!length) {
+			dout("%s: zero-length request\n", __func__);
 			__blk_end_request_all(rq, 0);
 			continue;
 		}
@@ -1958,9 +1976,6 @@ static void rbd_request_fn(struct request_queue *q)
 			result = -ENXIO;
 			goto end_request;
 		}
-
-		offset = (u64) blk_rq_pos(rq) << SECTOR_SHIFT;
-		length = (u64) blk_rq_bytes(rq);
 
 		result = -EINVAL;
 		if (WARN_ON(offset && length > U64_MAX - offset + 1))
